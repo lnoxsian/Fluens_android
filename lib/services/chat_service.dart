@@ -152,16 +152,6 @@ class ChatService {
   
   String? get modelPath => _downloadService.modelPath;
   
-  Future<double> downloadModel({
-    required void Function(double progress) onProgress,
-    required void Function(String status) onStatus,
-  }) async {
-    return await _downloadService.downloadModel(
-      onProgress: onProgress,
-      onStatus: onStatus,
-    );
-  }
-  
   /// Pick and load a model from local storage
   Future<String?> pickLocalModel() async {
     return await _downloadService.pickLocalModel();
@@ -170,15 +160,6 @@ class ChatService {
   /// Set a custom model path
   void setCustomModelPath(String path) {
     _downloadService.setCustomModelPath(path);
-  }
-  
-  bool isModelDownloaded() {
-    if (_downloadService.modelPath != null) {
-      return true;
-    }
-    // For synchronous check, we'll check if model file exists
-    // Note: This is only reliable after the service has been initialized
-    return false;
   }
   
   bool get hasModelPath => _downloadService.modelPath != null;
@@ -501,17 +482,22 @@ class ChatService {
             debugPrint('[ChatService] ✓ Stream started - first token arrived');
           }
           
-          debugPrint('[ChatService] 📥 TOKEN RECEIVED: "$token"');
+          // Filter out replacement characters usually shown as <?>
+          // logical-not-valid chars often appear in quantized models
+          final cleanToken = token.replaceAll('\uFFFD', '');
+          if (cleanToken.isEmpty) continue;
+          
+          debugPrint('[ChatService] TOKEN RECEIVED: "$cleanToken"');
           if (_isCancelled) {
             debugPrint('[ChatService] ⚠ Generation cancelled, breaking stream');
             break;
           }
           
           // Check for repetitive tokens to prevent infinite loops
-          if (token == lastToken) {
+          if (cleanToken == lastToken) {
             repeatCount++;
             if (repeatCount >= maxConsecutiveRepeats) {
-              debugPrint('[ChatService] ⚠⚠⚠ DETECTED REPETITIVE TOKENS: "$token" repeated $repeatCount times');
+              debugPrint('[ChatService] ⚠⚠⚠ DETECTED REPETITIVE TOKENS: "$cleanToken" repeated $repeatCount times');
               debugPrint('[ChatService] ⚠ Stopping generation to prevent infinite loop');
               await stopGeneration(); // Stop generation to prevent infinite loop
               break;
@@ -522,12 +508,12 @@ class ChatService {
           
           // Check for specific patterns that might indicate KV cache issues
           // e.g., repeated tokens like "None", empty tokens, or other problematic patterns
-          if (token == "None" || token == "" || token == "\nNone" || token == " None") {
-            debugPrint('[ChatService] ⚠ DETECTED POTENTIAL KV CACHE ISSUE: Received problematic token "$token"');
+          if (cleanToken == "None" || cleanToken == "" || cleanToken == "\nNone" || cleanToken == " None") {
+            debugPrint('[ChatService] ⚠ DETECTED POTENTIAL KV CACHE ISSUE: Received problematic token "$cleanToken"');
             // Increment a counter for problematic tokens
-            if (responseBuffer.toString().contains(token) && tokenCount > 10) {
+            if (responseBuffer.toString().contains(cleanToken) && tokenCount > 10) {
               // If we see the same problematic token pattern multiple times, stop generation
-              if (tokenCount > 50 && responseBuffer.toString().split(token).length > 10) {
+              if (tokenCount > 50 && responseBuffer.toString().split(cleanToken).length > 10) {
                 debugPrint('[ChatService] ⚠⚠⚠ TOO MANY PROBLEMATIC TOKENS - STOPPING GENERATION');
                 await stopGeneration();
                 break;
@@ -535,17 +521,17 @@ class ChatService {
             }
           }
           
-          lastToken = token;
+          lastToken = cleanToken;
           
           tokenCount++;
-          responseBuffer.write(token);
+          responseBuffer.write(cleanToken);
           if (tokenCount == 1) {
             debugPrint('[ChatService] ✓✓✓ FIRST TOKEN RECEIVED!');
           }
           if (tokenCount % 10 == 0) {
             debugPrint('[ChatService] Generated $tokenCount tokens so far...');
           }
-          _messageStreamController.add(token);
+          _messageStreamController.add(cleanToken);
         }
         
         // Stream completed - this executes AFTER the stream is done

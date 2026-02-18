@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Local Chat App',
+      title: 'Fluen',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
@@ -136,15 +136,6 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     
     debugPrint('[UI] ===== App initialization complete =====');
-  }
-
-  Future<void> _downloadModel() async {
-    // Download functionality is disabled
-    debugPrint('[UI] Download model triggered but is disabled');
-    
-    setState(() {
-      _statusMessage = 'Download functionality is disabled. Use "Load from Local" to select your model file.';
-    });
   }
 
   Future<void> _loadFromLocal() async {
@@ -1050,25 +1041,72 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
+            UserAccountsDrawerHeader(
+              accountName: const Text('Fluens User'),
+              accountEmail: const Text('Local AI Model'),
+              currentAccountPicture: CircleAvatar(
+                backgroundColor: Colors.white,
+                child: Text(
+                  'F',
+                  style: TextStyle(fontSize: 40.0, color: Colors.blue[800]),
+                ),
               ),
-              child: const Icon(Icons.chat_bubble, size: 20),
+              decoration: BoxDecoration(
+                color: Colors.blue[600],
+              ),
             ),
-            const SizedBox(width: 12),
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Qwen Chat', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                Text('0.6B Model', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w300)),
-              ],
+            ListTile(
+              leading: const Icon(Icons.chat),
+              title: const Text('New Chat'),
+              onTap: () {
+                Navigator.pop(context);
+                _clearChat();
+              },
             ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('Load Model'),
+              onTap: () {
+                Navigator.pop(context);
+                _loadFromLocal();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                _showSettingsDialog();
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                showAboutDialog(
+                  context: context,
+                  applicationName: 'Fluens',
+                  applicationVersion: '1.0.0',
+                  children: [
+                    const Text('Local LLM inference engine for Android devices.'),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      appBar: AppBar(
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Fluens', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           ],
         ),
         backgroundColor: Colors.blue[600],
@@ -1172,18 +1210,6 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      // Expanded(
-                      //   child: ElevatedButton.icon(
-                      //     onPressed: null, // Download button disabled
-                      //     icon: Icon(Icons.download, size: 18, color: Colors.grey),
-                      //     label: Text('Download (Disabled)', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                      //     style: ElevatedButton.styleFrom(
-                      //       backgroundColor: Colors.grey[200],
-                      //       padding: const EdgeInsets.symmetric(vertical: 12),
-                      //     ),
-                      //   ),
-                      // ),
                     ],
                   ),
                   if (_chatService.hasModelPath) ...[
