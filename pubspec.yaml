@@ -34,6 +34,16 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  
+  # Local plugin for running GGUF models on Android
+  llama_flutter_android: ^0.1.0
+    
+  # For downloading models from Hugging Face
+  dio: ^5.7.0
+  path_provider: ^2.1.5
+  permission_handler: ^11.0.1
+  file_picker: ^8.1.2
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
