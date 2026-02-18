@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:chat_app/services/chat_service.dart';
+import 'services/chat_service.dart';
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
 // UI Message model for display
