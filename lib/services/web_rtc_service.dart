@@ -102,7 +102,7 @@ class WebRtcService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'response': responseText}),
       );
-      debugPrint('[WebRtcService] Response sent back to ESP32: "${responseText.length > 20 ? responseText.substring(0, 20) + '...' : responseText}"');
+      debugPrint('[WebRtcService] Response sent back to ESP32: "${responseText.length > 20 ? "${responseText.substring(0, 20)}..." : responseText}"');
     } catch (e) {
       debugPrint('[WebRtcService] Error sending response: $e');
     }

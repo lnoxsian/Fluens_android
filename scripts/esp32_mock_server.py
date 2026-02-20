@@ -4,14 +4,53 @@ import json
 import logging
 import time
 import sys
+import socket
 from aiohttp import web
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING) # Reduce log level
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO) # Keep our logs visible
 
 # Global variable for current message
 current_message = None
 current_message_id = None
+
+async def udp_discovery_loop(http_port):
+    """
+    Listens for UDP broadcast discovery packets and responds logic.
+    """
+    UDP_PORT = 12345
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # Allow multiple sockets to use the same PORT number
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind(('0.0.0.0', UDP_PORT))
+        sock.setblocking(False)
+        logger.info(f"UDP Discovery Server listening on port {UDP_PORT}")
+    except Exception as e:
+        logger.error(f"Failed to bind UDP port {UDP_PORT}: {e}")
+        return
+
+    loop = asyncio.get_event_loop()
+
+    while True:
+        try:
+            data, addr = await loop.sock_recvfrom(sock, 1024)
+            message = data.decode('utf-8').strip()
+            
+            if message == "FLUENS_DISCOVER":
+                # Respond with our HTTP port
+                response = f"FLUENS_ESP32_HERE:{http_port}"
+                sock.sendto(response.encode('utf-8'), addr)
+                logger.info(f"Received discovery from {addr}, responded with {response}")
+                
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"UDP Error: {e}")
+            await asyncio.sleep(1)
+    
+    sock.close()
 
 async def handle_get_messages(request):
     """
@@ -28,7 +67,8 @@ async def handle_get_messages(request):
             "message": current_message,
             "id": current_message_id
         }
-        logger.info(f"App polled message: {current_message}")
+        # Only log once per message ID to avoid spam
+        # logger.info(f"App polled message: {current_message}")
     
     return web.Response(text=json.dumps(data), content_type='application/json')
 
@@ -49,7 +89,12 @@ async def handle_post_response(request):
 async def console_input_loop():
     """Simple blocking input loop running in executor"""
     global current_message, current_message_id
-    print("Type a message for the app and press Enter.")
+    print("\n---------------------------------------------------")
+    print(" ESP32 MOCK SERVER")
+    print("---------------------------------------------------")
+    print(" App will automatically discover this server.")
+    print(" Type a message below and press ENTER to send to the app.")
+    print("---------------------------------------------------")
     print("> ", end='', flush=True)
     
     loop = asyncio.get_event_loop()
@@ -64,7 +109,7 @@ async def console_input_loop():
             if msg:
                 current_message = msg
                 current_message_id = str(int(time.time() * 1000))
-                print(f"[Queued]: '{msg}' (waiting for app poll)")
+                # print(f"[Queued]: '{msg}'")
                 print("> ", end='', flush=True)
                 
         except asyncio.CancelledError:
@@ -74,11 +119,14 @@ async def console_input_loop():
 
 async def start_background_tasks(app):
     app['input_task'] = asyncio.create_task(console_input_loop())
+    app['udp_task'] = asyncio.create_task(udp_discovery_loop(app['http_port']))
 
 async def cleanup_background_tasks(app):
     app['input_task'].cancel()
+    app['udp_task'].cancel()
     try:
         await app['input_task']
+        await app['udp_task']
     except asyncio.CancelledError:
         pass
 
@@ -89,6 +137,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     app = web.Application()
+    app['http_port'] = args.port
     app.router.add_get('/messages', handle_get_messages)
     app.router.add_post('/response', handle_post_response)
     
@@ -96,8 +145,5 @@ if __name__ == "__main__":
     app.on_cleanup.append(cleanup_background_tasks)
 
     print(f"Starting Poll Server at http://{args.host}:{args.port}")
-    print("Endpoints:")
-    print(f"  GET  /messages  - Returns current message")
-    print(f"  POST /response  - Receives AI answer")
-    
-    web.run_app(app, host=args.host, port=args.port)
+    # Disable access logs to keep console clean for chat
+    web.run_app(app, host=args.host, port=args.port, access_log=None, print=None)

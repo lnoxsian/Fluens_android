@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -13,9 +14,85 @@ class HttpService {
   // Track last message ID to avoid duplicates
   String? _lastMessageId;
 
+  // Discovery vars
+  RawDatagramSocket? _discoverySocket;
+  final StreamController<String> _discoveredDeviceController = StreamController<String>.broadcast();
+  Stream<String> get discoveredDeviceStream => _discoveredDeviceController.stream;
+  bool _isScanning = false;
+  bool get isScanning => _isScanning;
+
   HttpService({required this.onMessageReceived});
 
   bool get isConnected => _pollingTimer != null && _pollingTimer!.isActive;
+
+  /// Start scanning for ESP32 devices via UDP
+  Future<void> startScan() async {
+    if (_isScanning) return;
+    _isScanning = true;
+    debugPrint('[HttpService] Starting UDP scan...');
+
+    try {
+      // Listen on any available port
+      _discoverySocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      _discoverySocket!.broadcastEnabled = true;
+
+      _discoverySocket!.listen((RawSocketEvent event) {
+        if (event == RawSocketEvent.read) {
+          final datagram = _discoverySocket!.receive();
+          if (datagram != null) {
+            String message = utf8.decode(datagram.data).trim();
+            debugPrint('[HttpService] Received UDP broadcast: $message from ${datagram.address.address}');
+            
+            // Expected format from ESP32: "FLUENS_ESP32_HERE:8080"
+            if (message.startsWith('FLUENS_ESP32_HERE')) {
+              // Extract port if present
+              String ip = datagram.address.address;
+              String port = '80'; // default
+              
+              if (message.contains(':')) {
+                port = message.split(':')[1];
+              }
+
+              // Found valid device
+              String url = '$ip:$port';
+              if (ip != '127.0.0.1') {
+                 debugPrint('[HttpService] Found ESP32 at $url');
+                 _discoveredDeviceController.add(url);
+              }
+            }
+          }
+        }
+      });
+
+      // Send broadcast query "FLUENS_DISCOVER" to port 12345 (discovery port)
+      Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!_isScanning || _discoverySocket == null) {
+          timer.cancel();
+          return;
+        }
+        
+        try {
+          // Send broadcast packet to 255.255.255.255
+          List<int> data = utf8.encode('FLUENS_DISCOVER');
+          _discoverySocket!.send(data, InternetAddress('255.255.255.255'), 12345);
+        } catch (e) {
+          debugPrint('[HttpService] Error sending UDP packet: $e');
+        }
+      });
+
+    } catch (e) {
+      debugPrint('[HttpService] Error binding UDP socket: $e');
+      _isScanning = false;
+    }
+  }
+  
+  /// Stop scanning
+  void stopScan() {
+    _isScanning = false;
+    _discoverySocket?.close();
+    _discoverySocket = null;
+    debugPrint('[HttpService] Stopped scanning');
+  }
 
   /// Start polling the ESP32 for messages
   void connect(String url) {
@@ -37,6 +114,12 @@ class HttpService {
     _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       await _pollEsp32();
     });
+  }
+
+  void dispose() {
+    disconnect();
+    stopScan();
+    _discoveredDeviceController.close();
   }
 
   /// Stop polling

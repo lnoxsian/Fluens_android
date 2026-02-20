@@ -71,9 +71,23 @@ class _ChatScreenState extends State<ChatScreen> {
         _chatService.sendMessage(message);
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-             SnackBar(content: Text('Received: "$message" but model not ready'))
-          );
+          // Just show in chat history without processing
+          setState(() {
+            _messages.add(UIChatMessage(
+              text: '[ESP32]: $message', 
+              isUser: true, // Display on right side or left? usually user is right. Let's make it look like user input.
+            ));
+            _scrollToBottom();
+          });
+          // Optional: Add a system note
+          /*
+          setState(() {
+            _messages.add(UIChatMessage(
+              text: '(Model not loaded - auto-reply disabled)', 
+              isUser: false,
+            ));
+          });
+          */
         }
       }
     });
@@ -308,74 +322,150 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showConnectDialog() {
     final ipController = TextEditingController(text: '192.168.4.1');
     bool isConnected = _httpService.isConnected;
+    List<String> discoveredDevices = [];
+    
+    // Start scan immediately when dialog opens
+    if (!isConnected) {
+      _httpService.startScan();
+    }
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Connect to ESP32'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter the ESP32 IP address or hostname.',
-              style: TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ipController,
-              decoration: InputDecoration(
-                labelText: 'IP Address / URL',
-                hintText: 'e.g., 192.168.1.100',
-                prefixIcon: const Icon(Icons.wifi),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          // Listen to new devices
+          // Note: Ideally we should use a StreamBuilder, but for simplicity in this dialog structure:
+          // We rely on the parent or a timer? 
+          // Better: Use StreamBuilder for the list part.
+          
+          return AlertDialog(
+            title: const Text('Connect to ESP32'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Scanning for devices...',
+                    style: TextStyle(fontSize: 13, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  if (isConnected) 
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(8)),
+                      child: Row(children: [
+                        Icon(Icons.check_circle, color: Colors.green),
+                        SizedBox(width: 8),
+                        Text('Connected', style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold))
+                      ]),
+                    )
+                  else
+                    SizedBox(
+                      height: 150,
+                      child: StreamBuilder<String>(
+                        stream: _httpService.discoveredDeviceStream,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData && !discoveredDevices.contains(snapshot.data)) {
+                             discoveredDevices.add(snapshot.data!);
+                          }
+                          
+                          if (discoveredDevices.isEmpty) {
+                            return const Center(child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(),
+                                SizedBox(height: 8),
+                                Text('Listening for broadcasts...'),
+                              ],
+                            ));
+                          }
+                          
+                          return ListView.builder(
+                            itemCount: discoveredDevices.length,
+                            itemBuilder: (context, index) {
+                              final device = discoveredDevices[index];
+                              return ListTile(
+                                leading: const Icon(Icons.router),
+                                title: Text(device),
+                                trailing: ElevatedButton(
+                                  child: const Text('Connect'),
+                                  onPressed: () {
+                                    ipController.text = device;
+                                    // Trigger connect logic below
+                                  },
+                                ),
+                                onTap: () {
+                                  ipController.text = device;
+                                },
+                              );
+                            },
+                          );
+                        }
+                      ),
+                    ),
+                  
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  const Text('Or enter manually:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: ipController,
+                    decoration: InputDecoration(
+                      labelText: 'IP Address / URL',
+                      hintText: 'e.g., 192.168.1.100',
+                      prefixIcon: const Icon(Icons.wifi),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              isConnected ? 'Status: Connected (Polling)' : 'Status: Disconnected',
-              style: TextStyle(
-                color: isConnected ? Colors.green : Colors.grey,
-                fontWeight: FontWeight.bold,
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _httpService.stopScan();
+                  Navigator.pop(context);
+                },
+                child: const Text('Cancel'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          if (isConnected)
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _httpService.disconnect();
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Disconnected from ESP32')),
-                );
-              },
-              child: const Text('Disconnect', style: TextStyle(color: Colors.red)),
-            ),
-          TextButton(
-            onPressed: () {
-              final url = ipController.text.trim();
-              if (url.isNotEmpty) {
-                setState(() {
-                  _httpService.connect(url);
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Connecting to $url...')),
-                );
-              }
-            },
-            child: const Text('Connect'),
-          ),
-        ],
+              if (isConnected)
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _httpService.disconnect();
+                    });
+                    _httpService.stopScan();
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Disconnected from ESP32')),
+                    );
+                  },
+                  child: const Text('Disconnect', style: TextStyle(color: Colors.red)),
+                ),
+              if (!isConnected)
+                TextButton(
+                  onPressed: () {
+                    final url = ipController.text.trim();
+                    if (url.isNotEmpty) {
+                      setState(() {
+                        _httpService.connect(url);
+                      });
+                      _httpService.stopScan();
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Connecting to $url...')),
+                      );
+                    }
+                  },
+                  child: const Text('Connect'),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1073,7 +1163,36 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     
     if (!_isModelLoaded) {
-      debugPrint('[UI] ✗ Model not loaded, returning');
+      if (_httpService.isConnected) {
+        // Connected but no model: Prompt user
+        final shouldLoad = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Model Not Loaded'),
+            content: const Text('An AI model is required to generate responses. Do you want to load a model now?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false), // Cancel
+                child: const Text('Cancel'),
+              ),
+              // Option to send directly could be here too, but following strict instructions
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true), // Load
+                child: const Text('Load Model'),
+              ),
+            ],
+          ),
+        );
+        
+        if (shouldLoad == true) {
+          _loadFromLocal();
+        }
+      } else {
+        debugPrint('[UI] ✗ Model not loaded, returning');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please load a model first')),
+        );
+      }
       return;
     }
 
@@ -1479,8 +1598,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         maxLines: null,
                         textCapitalization: TextCapitalization.sentences,
-                        enabled: _isModelLoaded && !_chatService.isGenerating,
-                        onSubmitted: _isModelLoaded && !_chatService.isGenerating ? (_) => _sendMessage() : null,
+                        enabled: (_isModelLoaded && !_chatService.isGenerating) || _httpService.isConnected,
+                        onSubmitted: ((_isModelLoaded && !_chatService.isGenerating) || _httpService.isConnected) ? (val) => _sendMessage() : null,
                       ),
                     ),
                   ),
@@ -1492,11 +1611,11 @@ class _ChatScreenState extends State<ChatScreen> {
                           ? (_chatService.isGenerating 
                               ? Colors.red[500] 
                               : Colors.blue[500])
-                          : Colors.grey[300],
+                          : (_httpService.isConnected ? Colors.blue[500] : Colors.grey[300]),
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
-                      onPressed: _isModelLoaded 
+                      onPressed: ((_isModelLoaded) || _httpService.isConnected)
                           ? (_chatService.isGenerating ? _stopGeneration : _sendMessage)
                           : null,
                       icon: Icon(_chatService.isGenerating ? Icons.stop_rounded : Icons.send_rounded),
