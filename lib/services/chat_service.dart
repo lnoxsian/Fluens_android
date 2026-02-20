@@ -53,6 +53,7 @@ class ChatService {
   bool _autoUnloadModel = false; // Whether to auto-unload model
   int _autoUnloadTimeout = 60; // Timeout in seconds (default 60)
   Timer? _autoUnloadTimer; // Timer for auto-unloading
+  bool _ttsEnabled = false; // TTS enabled state
   
   Stream<String> get messageStream => _messageStreamController.stream;
   Stream<bool> get generatingStateStream => _generatingStateController.stream;
@@ -61,6 +62,7 @@ class ChatService {
   
   bool get isLoadingModel => _isLoadingModel;
   bool get isGenerating => _isGenerating;
+  bool get ttsEnabled => _ttsEnabled;
   List<ChatMessage> get conversationHistory => List.unmodifiable(_conversationHistory);
   ContextHelper? get contextHelper => _contextHelper;
   
@@ -78,6 +80,7 @@ class ChatService {
     _chatTemplate = _settingsService.chatTemplate;
     _autoUnloadModel = _settingsService.autoUnloadModel;
     _autoUnloadTimeout = _settingsService.autoUnloadTimeout;
+    _ttsEnabled = _settingsService.ttsEnabled;
     
     // Register all custom templates with native code
     await _registerCustomTemplates();
@@ -800,6 +803,13 @@ class ChatService {
     debugPrint('[ChatService] Auto-unload timeout updated to: $seconds seconds');
   }
   
+  /// Update TTS enabled state
+  Future<void> updateTtsEnabled(bool enabled) async {
+    _ttsEnabled = enabled;
+    await _settingsService.setTtsEnabled(enabled);
+    debugPrint('[ChatService] TTS enabled updated to: $enabled');
+  }
+
   /// Method to reset context size to default when chat is cleared
   void resetContextSizeOnChatClear() {
     _settingsService.resetContextSizeToDefault();

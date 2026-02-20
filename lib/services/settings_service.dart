@@ -9,6 +9,7 @@ class SettingsService {
   static const String _keySystemMessage = 'system_message';
   static const String _keyCustomTemplates = 'custom_templates';
   static const String _keyThinkingMode = 'thinking_mode';
+  static const String _keyTtsEnabled = 'tts_enabled';
 
   static const int defaultContextSize = 2048;
   static const String defaultChatTemplate = 'auto';
@@ -16,6 +17,7 @@ class SettingsService {
   static const int defaultAutoUnloadTimeout = 60; // 60 seconds
   static const String defaultSystemMessage = 'You are a helpful AI assistant. Be concise and friendly.';
   static const bool defaultThinkingMode = false; // Thinking mode disabled by default
+  static const bool defaultTtsEnabled = false;
 
   SharedPreferences? _prefs;
 
@@ -83,6 +85,13 @@ class SettingsService {
 
   Future<bool> setThinkingMode(bool enabled) {
     return _prefs!.setBool(_keyThinkingMode, enabled);
+  }
+
+  /// TTS Settings
+  bool get ttsEnabled => _prefs?.getBool(_keyTtsEnabled) ?? defaultTtsEnabled;
+
+  Future<bool> setTtsEnabled(bool enabled) {
+    return _prefs!.setBool(_keyTtsEnabled, enabled);
   }
 
   /// Custom template management - stores template names only (content stored separately)

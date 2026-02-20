@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/chat_service.dart';
+import 'services/tts_service.dart';
+import 'services/http_service.dart';
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
 // UI Message model for display
@@ -45,6 +47,8 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chatService = ChatService();
+  final TtsService _ttsService = TtsService();
+  late final HttpService _httpService;
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<UIChatMessage> _messages = [];
@@ -53,10 +57,27 @@ class _ChatScreenState extends State<ChatScreen> {
   double _downloadProgress = 0.0;
   String _statusMessage = 'Initializing...';
   bool _isModelLoaded = false;
-
+  
   @override
   void initState() {
     super.initState();
+    
+    // Initialize HTTP (polling) service
+    _httpService = HttpService(onMessageReceived: (message) {
+      debugPrint('[UI] Received message from ESP32: $message');
+      
+      // Auto-send message to LLM if model is loaded
+      if (_isModelLoaded && !_isLoading && !_chatService.isGenerating) {
+        _chatService.sendMessage(message);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+             SnackBar(content: Text('Received: "$message" but model not ready'))
+          );
+        }
+      }
+    });
+
     _initializeApp();
   }
 
@@ -66,6 +87,9 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _statusMessage = 'Checking for existing model...';
     });
+
+    debugPrint('[UI] Initializing TTS service...');
+    await _ttsService.init();
 
     debugPrint('[UI] Calling chatService.initialize()...');
     final modelExists = await _chatService.initialize();
@@ -104,6 +128,13 @@ class _ChatScreenState extends State<ChatScreen> {
           _currentAIResponse = '';
         } else if (token == '\n') {
           // End of AI response
+          if (_chatService.ttsEnabled && _currentAIResponse.isNotEmpty) {
+            _ttsService.speak(_currentAIResponse);
+          }
+          // Send response back to ESP32 (if connected)
+          if (_httpService.isConnected && _currentAIResponse.isNotEmpty) {
+             _httpService.sendResponse(_currentAIResponse);
+          }
           _currentAIResponse = '';
         } else {
           // Accumulate AI response tokens
@@ -272,6 +303,81 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       debugPrint('[UI] ===== Unload model complete =====');
     }
+  }
+
+  void _showConnectDialog() {
+    final ipController = TextEditingController(text: '192.168.4.1');
+    bool isConnected = _httpService.isConnected;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Connect to ESP32'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the ESP32 IP address or hostname.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ipController,
+              decoration: InputDecoration(
+                labelText: 'IP Address / URL',
+                hintText: 'e.g., 192.168.1.100',
+                prefixIcon: const Icon(Icons.wifi),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isConnected ? 'Status: Connected (Polling)' : 'Status: Disconnected',
+              style: TextStyle(
+                color: isConnected ? Colors.green : Colors.grey,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          if (isConnected)
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _httpService.disconnect();
+                });
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Disconnected from ESP32')),
+                );
+              },
+              child: const Text('Disconnect', style: TextStyle(color: Colors.red)),
+            ),
+          TextButton(
+            onPressed: () {
+              final url = ipController.text.trim();
+              if (url.isNotEmpty) {
+                setState(() {
+                  _httpService.connect(url);
+                });
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Connecting to $url...')),
+                );
+              }
+            },
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCustomTemplateEditor(BuildContext context, {String? existingName, String? existingContent}) async {
@@ -496,11 +602,13 @@ class _ChatScreenState extends State<ChatScreen> {
     // Template selection
     String selectedTemplate = chatTemplate;
     bool autoUnloadEnabled = autoUnloadModel;
+    bool ttsEnabled = _chatService.ttsEnabled;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('App Settings'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('App Settings'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -530,7 +638,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
               const SizedBox(height: 4),
-              Container(
+              SizedBox(
                 width: double.infinity,
                 child: DropdownButtonFormField<String>(
                   isExpanded: true,
@@ -735,6 +843,22 @@ class _ChatScreenState extends State<ChatScreen> {
                 const SizedBox(height: 8),
                 _buildSettingField('Auto-unload timeout (seconds)', autoUnloadTimeoutController, 'Minimum: 10 seconds'),
               ],
+              
+              const SizedBox(height: 12),
+              // TTS Toggle
+              SwitchListTile(
+                title: const Text('Text-to-Speech'),
+                subtitle: const Text('Read aloud AI responses'),
+                value: ttsEnabled,
+                onChanged: (value) {
+                  setState(() {
+                    ttsEnabled = value;
+                  });
+                },
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+
               const SizedBox(height: 16),
               const Text('System Message', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
@@ -814,6 +938,7 @@ class _ChatScreenState extends State<ChatScreen> {
               await _chatService.updateChatTemplate(selectedTemplate);
               await _chatService.updateAutoUnloadModel(autoUnloadEnabled);
               await _chatService.updateAutoUnloadTimeout(parsedTimeout);
+              await _chatService.updateTtsEnabled(ttsEnabled);
               
               // Update system message
               await _chatService.updateSystemMessage(systemMessageController.text);
@@ -837,6 +962,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: const Text('Apply'),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1081,6 +1207,19 @@ class _ChatScreenState extends State<ChatScreen> {
               onTap: () {
                 Navigator.pop(context);
                 _showSettingsDialog();
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: Icon(
+                _httpService.isConnected ? Icons.wifi : Icons.wifi_off,
+                color: _httpService.isConnected ? Colors.green : Colors.grey[600],
+              ),
+              title: const Text('Connect ESP32'),
+              subtitle: _httpService.isConnected ? const Text('Connected', style: TextStyle(color: Colors.green, fontSize: 12)) : null,
+              onTap: () {
+                Navigator.pop(context);
+                _showConnectDialog();
               },
             ),
             const Divider(),
