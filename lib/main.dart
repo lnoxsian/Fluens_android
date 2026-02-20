@@ -1288,7 +1288,7 @@ class _ChatScreenState extends State<ChatScreen> {
           icon = Icons.info_outline;
           text = 'Context: ${percent.toStringAsFixed(0)}%';
         } else {
-          color = Colors.green;
+          color = Colors.deepPurple;
           icon = Icons.check_circle_outline;
           text = '${info.tokensUsed}/${info.contextSize} tokens';
         }
@@ -1504,126 +1504,93 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           
-          // Action buttons - only show when model not loaded and not in online mode
-          if (!_isModelLoaded && !_chatService.isOnlineMode)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey[200]!),
-                ),
+          // Action buttons - unified UI for all modes
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey[200]!),
               ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: !_isLoading ? _loadFromLocal : null,
-                          icon: const Icon(Icons.folder_open, size: 18),
-                          label: const Text('Load from Local', style: TextStyle(fontSize: 13)),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_chatService.hasModelPath) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: (_chatService.hasModelPath && !_isLoading && !_chatService.isLoadingModel)
-                                ? _loadModel 
-                                : null,
-                            icon: const Icon(Icons.memory, size: 18),
-                            label: const Text('Load into Memory', style: TextStyle(fontSize: 13)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (!_chatService.isOnlineMode) // Only show if not already online
-                  ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            _chatService.setOnlineMode(true);
-                            setState(() {}); // Refresh UI
-                            
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Switched to Online Mode'),
-                                backgroundColor: Colors.deepPurple,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.cloud_outlined, size: 18),
-                          label: const Text('Continue Online', style: TextStyle(fontSize: 13)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.deepPurple,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            side: BorderSide(color: Colors.deepPurple),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  ],
-                ],
-              ),
-            )
-          else if (_isModelLoaded && !_chatService.isOnlineMode)
-            // Show unload button when model is loaded and not explicit online mode
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey[200]!),
-                ),
-              ),
-              child: Row(
-                children: [
+            ),
+            child: Row(
+              children: [
+                if (!_isModelLoaded && !_chatService.isOnlineMode) ...[
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isModelLoaded && !_isLoading ? _unloadModel : null,
-                      icon: const Icon(Icons.exit_to_app, size: 16),
-                      label: const Text('Unload Model', style: TextStyle(fontSize: 12)),
+                      onPressed: !_isLoading ? _loadFromLocal : null,
+                      icon: const Icon(Icons.folder_open, size: 16),
+                      label: const Text('Load Model', style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.orange[700],
-                        side: BorderSide(color: Colors.orange[300]!),
+                        foregroundColor: Colors.deepPurple[700],
+                        side: BorderSide(color: Colors.deepPurple[200]!),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
                     ),
                   ),
-                ],
-              ),
-            )
-          // Show online mode actions
-          else if (_chatService.isOnlineMode)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(color: Colors.grey[200]!),
-                ),
-              ),
-              child: Row(
-                children: [
+                  if (_chatService.hasModelPath) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: (_chatService.hasModelPath && ! _isLoading && !_chatService.isLoadingModel)
+                            ? _loadModel 
+                            : null,
+                        icon: const Icon(Icons.memory, size: 16),
+                        label: const Text('Reload', style: TextStyle(fontSize: 12)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.green[700],
+                          side: BorderSide(color: Colors.green[200]!),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        _chatService.setOnlineMode(true);
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.cloud_outlined, size: 16),
+                      label: const Text('Go Online', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.deepPurple,
+                         side: BorderSide(color: Colors.deepPurple[200]!),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ] else if (_isModelLoaded && !_chatService.isOnlineMode) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: !_isLoading ? _unloadModel : null,
+                      icon: const Icon(Icons.exit_to_app, size: 16),
+                      label: const Text('Unload Model', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orange[700],
+                        side: BorderSide(color: Colors.orange[200]!),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        _chatService.setOnlineMode(true);
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.cloud_outlined, size: 16),
+                      label: const Text('Go Online', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.deepPurple,
+                         side: BorderSide(color: Colors.deepPurple[200]!),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ] else if (_chatService.isOnlineMode) ...[
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () {
@@ -1631,7 +1598,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         setState(() {});
                       },
                       icon: const Icon(Icons.arrow_back, size: 16),
-                      label: const Text('Back to Offline Mode', style: TextStyle(fontSize: 12)),
+                      label: const Text('Offline Mode', style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.grey[700],
                         side: BorderSide(color: Colors.grey[300]!),
@@ -1639,9 +1606,23 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: !_isLoading ? _loadFromLocal : null,
+                      icon: const Icon(Icons.folder_open, size: 16),
+                      label: const Text('Change Model', style: TextStyle(fontSize: 12)),
+                       style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.deepPurple[700],
+                        side: BorderSide(color: Colors.deepPurple[200]!),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
+          ),
           
           // Chat messages
           Expanded(

@@ -488,12 +488,13 @@ class ChatService {
       
       try {
         // Add timeout to detect if stream never starts
+        // Increased timeout to 120s as prompt processing on mobile can be slow
         final streamWithTimeout = stream.timeout(
-          Duration(seconds: 30),
+          Duration(seconds: 120),
           onTimeout: (sink) {
             if (!streamStarted) {
-              debugPrint('[ChatService] ⚠⚠⚠ STREAM TIMEOUT: No tokens received after 30 seconds');
-              debugPrint('[ChatService] ⚠ This suggests the native code is not sending tokens');
+              debugPrint('[ChatService] ⚠⚠⚠ STREAM TIMEOUT: No tokens received after 120 seconds');
+              debugPrint('[ChatService] ⚠ This suggests the native code is not sending tokens or prompt processing is very slow');
               debugPrint('[ChatService] ⚠ Check native generation callback configuration');
             }
             sink.close();
