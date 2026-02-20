@@ -929,17 +929,57 @@ class ChatService {
     
     // Cancel auto-unload timer since model is being unloaded
     _cancelAutoUnloadTimer();
+
+    // Stop detection if necessary
+    if (_isGenerating || _generationSubscription != null) {
+      debugPrint('[ChatService] Stopping ongoing generation before unload...');
+      try {
+        await stopGeneration();
+        // Give the native thread a moment to cease operations completely
+        await Future.delayed(const Duration(seconds: 1)); // Increased delay
+      } catch (e) {
+        debugPrint('[ChatService] Error stopping generation during unload: $e');
+      }
+    }
     
+    // Safety Force Stop - even if UI thinks generation stopped, cancel subscription
+    // to ensure no dart side stream is holding us back.
+    if (_generationSubscription != null) {
+        try {
+            await _generationSubscription?.cancel();
+            _generationSubscription = null;
+        } catch (e) { /* ignore */ }
+    }
+    
+    // ADDED SAFETY: Call stop() on native controller directly before dispose, just in case
+    // a background job is still running despite the stream ending.
+    if (_llama != null) {
+        try {
+            debugPrint('[ChatService] Forcing native stop before dispose...');
+            await _llama!.stop();
+            await Future.delayed(const Duration(milliseconds: 500));
+        } catch (e) {
+            debugPrint('[ChatService] Error during force stop: $e');
+        }
+    }
+
     if (_llama != null) {
       debugPrint('[ChatService] Disposing LlamaController...');
       try {
-        await _llama!.dispose();
+        // Dispose the controller
+        await _llama!.dispose(); 
+        
+        // Critical: Add a small delay after dispose to ensure native memory is fully released
+        // before we potentially load another model or exit.
+        await Future.delayed(const Duration(milliseconds: 200));
+        
         _llama = null;
         debugPrint('[ChatService] ✓ Model unloaded successfully');
       } catch (e) {
         debugPrint('[ChatService] ✗ Error unloading model: $e');
         _llama = null;
-        rethrow;
+        // Don't rethrow here to prevent crashing the UI flow, just log it.
+        // rethrow; 
       }
     } else {
       debugPrint('[ChatService] No model to unload');

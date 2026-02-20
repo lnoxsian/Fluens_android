@@ -141,8 +141,10 @@ class _ChatScreenState extends State<ChatScreen> {
           _messages.add(UIChatMessage(text: token.trim(), isUser: false));
           _currentAIResponse = '';
         } else if (token == '\n') {
-          // End of AI response
-          if (_chatService.ttsEnabled && _currentAIResponse.isNotEmpty) {
+          // End of AI response or newline in response
+          debugPrint('[UI] End of segment detected. TTS Enabled: ${_chatService.ttsEnabled}, Content length: ${_currentAIResponse.length}');
+          if (_chatService.ttsEnabled && _currentAIResponse.trim().isNotEmpty) {
+            debugPrint('[UI] Speaking: "${_currentAIResponse.trim()}"');
             _ttsService.speak(_currentAIResponse);
           }
           // Send response back to ESP32 (if connected)
