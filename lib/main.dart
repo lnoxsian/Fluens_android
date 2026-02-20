@@ -376,24 +376,27 @@ class _ChatScreenState extends State<ChatScreen> {
                             ));
                           }
                           
-                          return ListView.builder(
-                            itemCount: discoveredDevices.length,
-                            itemBuilder: (context, index) {
-                              final device = discoveredDevices[index];
-                              return ListTile(
-                                leading: const Icon(Icons.router),
-                                title: Text(device),
-                                trailing: ElevatedButton(
-                                  child: const Text('Connect'),
-                                  onPressed: () {
-                                    ipController.text = device;
-                                    // Trigger connect logic below
-                                  },
-                                ),
-                                onTap: () {
-                                  ipController.text = device;
-                                },
-                              );
+                          // Show only the latest discovered device or a compact list
+                          final device = discoveredDevices.last;
+                          return ListTile(
+                            leading: const Icon(Icons.router),
+                            title: Text(device),
+                            trailing: ElevatedButton(
+                              child: const Text('Connect'),
+                              onPressed: () {
+                                // Connect immediately
+                                setState(() {
+                                  _httpService.connect(device);
+                                });
+                                _httpService.stopScan();
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Connecting to $device...')),
+                                );
+                              },
+                            ),
+                            onTap: () {
+                              ipController.text = device;
                             },
                           );
                         }

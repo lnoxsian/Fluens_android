@@ -36,7 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   
   # Local plugin for running GGUF models on Android
-  llama_flutter_android: ^0.1.0
+  llama_flutter_android: ^0.1.1
     
   # For downloading models from Hugging Face
   dio: ^5.7.0
@@ -102,3 +102,7 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_icons:
+  android: "launcher_icon"
+  image_path: "assets/icon.png"
