@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 import 'model_download_service.dart';
 import 'settings_service.dart';
+import 'groq_service.dart';
 
 /// Chat service with automatic chat template support and context management
 /// 
@@ -30,7 +31,9 @@ import 'settings_service.dart';
 class ChatService {
   final ModelDownloadService _downloadService = ModelDownloadService();
   final SettingsService _settingsService = SettingsService();
+  late final GroqService _groqService;
   LlamaController? _llama;
+  bool _useOnlineInference = false;
   final StreamController<String> _messageStreamController = StreamController<String>.broadcast();
   final StreamController<bool> _generatingStateController = StreamController<bool>.broadcast();
   final StreamController<ContextInfo> _contextInfoStreamController = StreamController<ContextInfo>.broadcast();
@@ -63,6 +66,13 @@ class ChatService {
   bool get isLoadingModel => _isLoadingModel;
   bool get isGenerating => _isGenerating;
   bool get ttsEnabled => _ttsEnabled;
+  bool get isOnlineMode => _useOnlineInference;
+
+  void setOnlineMode(bool enabled) {
+    _useOnlineInference = enabled;
+    debugPrint('[ChatService] Online mode set to: $enabled');
+  }
+
   List<ChatMessage> get conversationHistory => List.unmodifiable(_conversationHistory);
   ContextHelper? get contextHelper => _contextHelper;
   
@@ -74,6 +84,9 @@ class ChatService {
     
     // Initialize the settings service
     await _settingsService.init();
+    
+    // Initialize Groq service
+    _groqService = GroqService(settingsService: _settingsService);
     
     // Load settings
     _contextSize = _settingsService.contextSize;
@@ -359,6 +372,13 @@ class ChatService {
       return;
     }
     
+    // Online Inference Logic
+    if (_useOnlineInference) {
+      debugPrint('[ChatService] Using Online Inference (Groq)');
+      await _sendMessageOnline(message);
+      return;
+    }
+
     if (_llama == null) {
       debugPrint('[ChatService] ✗ Error: LlamaController is null');
       _messageStreamController.add("Error: Model not loaded. Please load the model first.\n");
@@ -449,6 +469,7 @@ class ChatService {
         seed: generationConfig.seed,
         template: effectiveTemplate,
       );
+
       
       debugPrint('[ChatService] ✓ generateChat() returned stream');
       
@@ -654,7 +675,69 @@ class ChatService {
     }
     
     debugPrint('[ChatService] ===== Message processing complete =====');
-    debugPrint('[ChatService] Final state: isGenerating = $_isGenerating');
+    debugPrint('[ChatService] final state: isGenerating = $_isGenerating');
+  }
+  
+  Future<void> _sendMessageOnline(String message) async {
+    _isGenerating = true;
+    _isCancelled = false;
+    _generatingStateController.add(true);
+    
+    // Add user message to history
+    _conversationHistory.add(ChatMessage(role: 'user', content: message));
+    _messageStreamController.add("User: $message\nAI: ");
+    
+    try {
+      // Prepare history for Groq
+      // Exclude the last message (current user message) as it is passed separately
+      final historyList = _conversationHistory.sublist(0, _conversationHistory.length - 1);
+      final history = <Map<String, String>>[];
+      String? systemPrompt;
+      
+      for (final msg in historyList) {
+        if (msg.role == 'system') {
+          systemPrompt = msg.content;
+        } else {
+          history.add({'role': msg.role, 'content': msg.content});
+        }
+      }
+
+      debugPrint('[ChatService] Sending request to Groq...');
+      final stream = _groqService.sendMessageStream(
+        message, 
+        history, 
+        systemMessage: systemPrompt
+      );
+      
+      final responseBuffer = StringBuffer();
+      
+      await for (final token in stream) {
+        if (_isCancelled) break;
+        responseBuffer.write(token);
+        _messageStreamController.add(token);
+      }
+      
+      final response = responseBuffer.toString();
+      
+      if (!_isCancelled && response.isNotEmpty) {
+        _conversationHistory.add(ChatMessage(role: 'assistant', content: response));
+        _messageStreamController.add("\n");
+        debugPrint('[ChatService] Groq response complete');
+      } else if (_isCancelled) {
+        _messageStreamController.add("\n[Stopped]\n");
+      }
+      
+    } catch (e) {
+       debugPrint('[ChatService] Groq Error: $e');
+       _messageStreamController.add("\nError: $e\n");
+       // Remove failed message
+       if (_conversationHistory.isNotEmpty && _conversationHistory.last.role == 'user') {
+         _conversationHistory.removeLast();
+       }
+    } finally {
+      _isGenerating = false;
+      _generatingStateController.add(false);
+    }
   }
   
   /// Stop/Cancel ongoing generation

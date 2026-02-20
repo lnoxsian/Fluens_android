@@ -10,6 +10,8 @@ class SettingsService {
   static const String _keyCustomTemplates = 'custom_templates';
   static const String _keyThinkingMode = 'thinking_mode';
   static const String _keyTtsEnabled = 'tts_enabled';
+  static const String _keyGroqApiKey = 'groq_api_key';
+  static const String _keyGroqModel = 'groq_model';
 
   static const int defaultContextSize = 2048;
   static const String defaultChatTemplate = 'auto';
@@ -18,6 +20,7 @@ class SettingsService {
   static const String defaultSystemMessage = 'You are a helpful AI assistant. Be concise and friendly.';
   static const bool defaultThinkingMode = false; // Thinking mode disabled by default
   static const bool defaultTtsEnabled = false;
+  static const String defaultGroqModel = 'llama-3.3-70b-versatile';
 
   SharedPreferences? _prefs;
 
@@ -92,6 +95,19 @@ class SettingsService {
 
   Future<bool> setTtsEnabled(bool enabled) {
     return _prefs!.setBool(_keyTtsEnabled, enabled);
+  }
+
+  /// Groq API Settings
+  String get groqApiKey => _prefs?.getString(_keyGroqApiKey) ?? '';
+
+  Future<bool> setGroqApiKey(String apiKey) {
+    return _prefs!.setString(_keyGroqApiKey, apiKey);
+  }
+
+  String get groqModel => _prefs?.getString(_keyGroqModel) ?? defaultGroqModel;
+
+  Future<bool> setGroqModel(String model) {
+    return _prefs!.setString(_keyGroqModel, model);
   }
 
   /// Custom template management - stores template names only (content stored separately)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'services/chat_service.dart';
 import 'services/tts_service.dart';
 import 'services/http_service.dart';
+import 'services/settings_service.dart';
 import 'package:llama_flutter_android/llama_flutter_android.dart';
 
 // UI Message model for display
@@ -29,7 +30,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Fluen',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        primarySwatch: Colors.deepPurple,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: const ChatScreen(),
@@ -66,28 +67,19 @@ class _ChatScreenState extends State<ChatScreen> {
     _httpService = HttpService(onMessageReceived: (message) {
       debugPrint('[UI] Received message from ESP32: $message');
       
-      // Auto-send message to LLM if model is loaded
-      if (_isModelLoaded && !_isLoading && !_chatService.isGenerating) {
+      // Auto-send message to LLM (Model loaded OR Online Mode enabled)
+      if ((_isModelLoaded || _chatService.isOnlineMode) && !_isLoading && !_chatService.isGenerating) {
         _chatService.sendMessage(message);
       } else {
         if (mounted) {
           // Just show in chat history without processing
           setState(() {
             _messages.add(UIChatMessage(
-              text: '[ESP32]: $message', 
-              isUser: true, // Display on right side or left? usually user is right. Let's make it look like user input.
+              text: '[ESP32]: $message',
+              isUser: true,
             ));
             _scrollToBottom();
           });
-          // Optional: Add a system note
-          /*
-          setState(() {
-            _messages.add(UIChatMessage(
-              text: '(Model not loaded - auto-reply disabled)', 
-              isUser: false,
-            ));
-          });
-          */
         }
       }
     });
@@ -482,7 +474,7 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (context) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.edit_note, color: Colors.blue[700], size: 20),
+            Icon(Icons.edit_note, color: Colors.deepPurple[700], size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -680,6 +672,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final autoUnloadModel = _chatService.autoUnloadModel;
     final autoUnloadTimeout = _chatService.autoUnloadTimeout;
     final systemMessage = _chatService.settingsService.systemMessage; // Access from chat service
+    final groqApiKey = _chatService.settingsService.groqApiKey;
     
     // Controllers for text fields
     final maxTokensController = TextEditingController(text: config.maxTokens.toString());
@@ -690,11 +683,13 @@ class _ChatScreenState extends State<ChatScreen> {
     final contextSizeController = TextEditingController(text: contextSize.toString());
     final autoUnloadTimeoutController = TextEditingController(text: autoUnloadTimeout.toString());
     final systemMessageController = TextEditingController(text: systemMessage);
+    final groqApiKeyController = TextEditingController(text: groqApiKey);
     
     // Template selection
     String selectedTemplate = chatTemplate;
     bool autoUnloadEnabled = autoUnloadModel;
     bool ttsEnabled = _chatService.ttsEnabled;
+    bool useOnlineMode = _chatService.isOnlineMode;
     
     showDialog(
       context: context,
@@ -706,6 +701,46 @@ class _ChatScreenState extends State<ChatScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Online Mode Toggle
+              SwitchListTile(
+                title: const Text('Use Online Inference (Groq)'),
+                subtitle: const Text('Requires API Key'),
+                value: useOnlineMode,
+                onChanged: (value) {
+                  setState(() {
+                    useOnlineMode = value;
+                  });
+                },
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              const Divider(),
+              if (useOnlineMode) ...[
+                 const Text('Groq Settings', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                 const SizedBox(height: 8),
+                 TextField(
+                   controller: groqApiKeyController,
+                   decoration: InputDecoration(
+                     labelText: 'API Key',
+                     hintText: 'gsk_...',
+                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                   ),
+                   obscureText: true,
+                 ),
+                 const SizedBox(height: 12),
+                 Row(
+                   children: [
+                     Icon(Icons.info_outline, size: 16, color: Colors.grey[600]),
+                     SizedBox(width: 8),
+                     Text(
+                       'Using model: llama-3.3-70b-versatile',
+                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                     ),
+                   ],
+                 ),
+                 const SizedBox(height: 16),
+              ],
               const Text('Generation Settings', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               _buildSettingField('Max Tokens', maxTokensController, 'e.g., 150, 512'),
@@ -775,8 +810,8 @@ class _ChatScreenState extends State<ChatScreen> {
               Container(
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  border: Border.all(color: Colors.blue[200]!),
+                  color: Colors.deepPurple[50],
+                  border: Border.all(color: Colors.deepPurple[200]!),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -784,11 +819,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.edit_note, size: 18, color: Colors.blue[700]),
+                        Icon(Icons.edit_note, size: 18, color: Colors.deepPurple[700]),
                         const SizedBox(width: 8),
                         Text(
                           'Custom Chat Templates',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.blue[900]),
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.deepPurple[900]),
                         ),
                       ],
                     ),
@@ -807,7 +842,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         icon: Icon(Icons.add, size: 18),
                         label: Text('Create New Template'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue[600],
+                          backgroundColor: Colors.deepPurple[600],
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
@@ -829,7 +864,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         children: _chatService.customTemplateNames.map((templateName) {
                           return Container(
                             decoration: BoxDecoration(
-                              color: Colors.blue[100],
+                              color: Colors.deepPurple[100],
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Row(
@@ -837,7 +872,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               children: [
                                 Padding(
                                   padding: const EdgeInsets.only(left: 12),
-                                  child: Icon(Icons.label, size: 14, color: Colors.blue[700]),
+                                  child: Icon(Icons.label, size: 14, color: Colors.deepPurple[700]),
                                 ),
                                 Padding(
                                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -853,7 +888,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   borderRadius: BorderRadius.circular(12),
                                   child: Padding(
                                     padding: const EdgeInsets.all(6),
-                                    child: Icon(Icons.edit, size: 14, color: Colors.blue[700]),
+                                    child: Icon(Icons.edit, size: 14, color: Colors.deepPurple[700]),
                                   ),
                                 ),
                                 InkWell(
@@ -1035,6 +1070,10 @@ class _ChatScreenState extends State<ChatScreen> {
               // Update system message
               await _chatService.updateSystemMessage(systemMessageController.text);
               
+              // Save Groq Settings
+              await _chatService.settingsService.setGroqApiKey(groqApiKeyController.text.trim());
+              _chatService.setOnlineMode(useOnlineMode);
+              
               // Update generation config
               setState(() {
                 _chatService.generationConfig = GenerationConfig(
@@ -1164,7 +1203,18 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
     
-    if (!_isModelLoaded) {
+    // Check if we can proceed (Either Online Mode OR Local Model Loaded OR ESP32 Connected)
+    if (_chatService.isOnlineMode) {
+      // Online mode active - check API key
+      if (_chatService.settingsService.groqApiKey.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please set Groq API Key in Settings for Online Mode')),
+        );
+        _showSettingsDialog();
+        return;
+      }
+      // Proceed to send
+    } else if (!_isModelLoaded) {
       if (_httpService.isConnected) {
         // Connected but no model: Prompt user
         final shouldLoad = await showDialog<bool>(
@@ -1299,11 +1349,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 backgroundColor: Colors.white,
                 child: Text(
                   'F',
-                  style: TextStyle(fontSize: 40.0, color: Colors.blue[800]),
+                  style: TextStyle(fontSize: 40.0, color: Colors.deepPurple[800]),
                 ),
               ),
               decoration: BoxDecoration(
-                color: Colors.blue[600],
+                color: Colors.deepPurple[600],
               ),
             ),
             ListTile(
@@ -1369,7 +1419,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Text('Fluens', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           ],
         ),
-        backgroundColor: Colors.blue[600],
+        backgroundColor: Colors.deepPurple[600],
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -1394,11 +1444,13 @@ class _ChatScreenState extends State<ChatScreen> {
             _buildContextIndicator(),
           
           // Status area
-          if (!_isModelLoaded || _isLoading)
+          if (!_isModelLoaded || _isLoading || _chatService.isOnlineMode)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: _isModelLoaded ? Colors.green[50] : Colors.orange[50],
+                color: _chatService.isOnlineMode 
+                    ? Colors.deepPurple[50] 
+                    : (_isModelLoaded ? Colors.green[50] : Colors.orange[50]),
                 border: Border(
                   bottom: BorderSide(color: Colors.grey[200]!),
                 ),
@@ -1410,17 +1462,23 @@ class _ChatScreenState extends State<ChatScreen> {
                   Row(
                     children: [
                       Icon(
-                        _isModelLoaded ? Icons.check_circle : Icons.info_outline,
+                        _chatService.isOnlineMode 
+                            ? Icons.cloud_done 
+                            : (_isModelLoaded ? Icons.check_circle : Icons.info_outline),
                         size: 18,
-                        color: _isModelLoaded ? Colors.green[700] : Colors.orange[700],
+                        color: _chatService.isOnlineMode 
+                            ? Colors.deepPurple[700] 
+                            : (_isModelLoaded ? Colors.green[700] : Colors.orange[700]),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          _statusMessage,
+                          _chatService.isOnlineMode ? 'Online Mode (Groq)' : _statusMessage,
                           style: TextStyle(
                             fontSize: 13,
-                            color: _isModelLoaded ? Colors.green[900] : Colors.orange[900],
+                            color: _chatService.isOnlineMode 
+                                ? Colors.deepPurple[900] 
+                                : (_isModelLoaded ? Colors.green[900] : Colors.orange[900]),
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -1446,8 +1504,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           
-          // Action buttons - only show when model not loaded
-          if (!_isModelLoaded)
+          // Action buttons - only show when model not loaded and not in online mode
+          if (!_isModelLoaded && !_chatService.isOnlineMode)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -1493,11 +1551,42 @@ class _ChatScreenState extends State<ChatScreen> {
                       ],
                     ),
                   ],
+                  if (!_chatService.isOnlineMode) // Only show if not already online
+                  ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            _chatService.setOnlineMode(true);
+                            setState(() {}); // Refresh UI
+                            
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Switched to Online Mode'),
+                                backgroundColor: Colors.deepPurple,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.cloud_outlined, size: 18),
+                          label: const Text('Continue Online', style: TextStyle(fontSize: 13)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.deepPurple,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            side: BorderSide(color: Colors.deepPurple),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  ],
                 ],
               ),
             )
-          else
-            // Show unload button when model is loaded
+          else if (_isModelLoaded && !_chatService.isOnlineMode)
+            // Show unload button when model is loaded and not explicit online mode
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -1516,6 +1605,36 @@ class _ChatScreenState extends State<ChatScreen> {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: Colors.orange[700],
                         side: BorderSide(color: Colors.orange[300]!),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          // Show online mode actions
+          else if (_chatService.isOnlineMode)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  bottom: BorderSide(color: Colors.grey[200]!),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        _chatService.setOnlineMode(false);
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.arrow_back, size: 16),
+                      label: const Text('Back to Offline Mode', style: TextStyle(fontSize: 12)),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.grey[700],
+                        side: BorderSide(color: Colors.grey[300]!),
                         padding: const EdgeInsets.symmetric(vertical: 8),
                       ),
                     ),
@@ -1543,7 +1662,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Start chatting after loading the model!',
+                          _chatService.isOnlineMode
+                              ? 'Start chatting with Groq Llama 3!'
+                              : 'Start chatting after loading the model!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 14,
@@ -1600,8 +1721,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                         maxLines: null,
                         textCapitalization: TextCapitalization.sentences,
-                        enabled: (_isModelLoaded && !_chatService.isGenerating) || _httpService.isConnected,
-                        onSubmitted: ((_isModelLoaded && !_chatService.isGenerating) || _httpService.isConnected) ? (val) => _sendMessage() : null,
+                        enabled: (_isModelLoaded && !_chatService.isGenerating) || _httpService.isConnected || _chatService.isOnlineMode,
+                        onSubmitted: ((_isModelLoaded && !_chatService.isGenerating) || _httpService.isConnected || _chatService.isOnlineMode) ? (val) => _sendMessage() : null,
                       ),
                     ),
                   ),
@@ -1609,15 +1730,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   // Send or Stop button
                   Container(
                     decoration: BoxDecoration(
-                      color: _isModelLoaded
+                      color: (_isModelLoaded || _chatService.isOnlineMode)
                           ? (_chatService.isGenerating 
                               ? Colors.red[500] 
-                              : Colors.blue[500])
-                          : (_httpService.isConnected ? Colors.blue[500] : Colors.grey[300]),
+                              : Colors.deepPurple[500])
+                          : (_httpService.isConnected ? Colors.deepPurple[500] : Colors.grey[300]),
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
-                      onPressed: ((_isModelLoaded) || _httpService.isConnected)
+                      onPressed: ((_isModelLoaded) || _httpService.isConnected || _chatService.isOnlineMode)
                           ? (_chatService.isGenerating ? _stopGeneration : _sendMessage)
                           : null,
                       icon: Icon(_chatService.isGenerating ? Icons.stop_rounded : Icons.send_rounded),
@@ -1654,7 +1775,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: message.isUser ? Colors.blue[500] : Colors.grey[100],
+                color: message.isUser ? Colors.deepPurple[500] : Colors.grey[100],
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(20),
                   topRight: const Radius.circular(20),
@@ -1697,9 +1818,9 @@ class _ChatScreenState extends State<ChatScreen> {
           if (message.isUser) ...[
             const SizedBox(width: 8),
             CircleAvatar(
-              backgroundColor: Colors.blue[100],
+              backgroundColor: Colors.deepPurple[100],
               radius: 18,
-              child: Icon(Icons.person, size: 20, color: Colors.blue[700]),
+              child: Icon(Icons.person, size: 20, color: Colors.deepPurple[700]),
             ),
           ],
         ],
